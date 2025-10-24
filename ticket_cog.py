@@ -169,7 +169,6 @@ class TicketCog(commands.Cog):
         await interaction.response.send_message(f"ტიკეტის სისტემა დაყენებულია #{channel.name}-ში!", ephemeral=True)
 
 async def setup(bot: commands.Bot):
-    # დავამატოთ asyncio იმპორტი დახურვის ღილაკისთვის
-    import asyncio
-    globals()['asyncio'] = asyncio # ვაქცევთ გლობალურად ხელმისაწვდომს View-სთვის
+    # import asyncio # <--- წაშალე ეს
+    # globals()['asyncio'] = asyncio # <--- წაშალე ეს
     await bot.add_cog(TicketCog(bot))
