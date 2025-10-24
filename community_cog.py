@@ -3,14 +3,15 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont # წავშალეთ ImageFilter, რადგან არ ვიყენებთ
 import requests
 import io
-from typing import Optional
+from typing import Optional # <--- დავამატეთ იმპორტი აქაც ყოველი შემთხვევისთვის
 
 WELCOME_DB = "welcome_data.json"
 AUTOROLE_DB = "autorole_data.json"
 
+# --- მონაცემთა ბაზის ფუნქციები ---
 def load_data(file):
     if not os.path.exists(file): return {}
     try:
@@ -22,22 +23,30 @@ def save_data(data, file):
         with open(file, "w", encoding='utf-8') as f: json.dump(data, f, indent=4, ensure_ascii=False)
     except Exception as e: print(f"ფაილში შენახვის შეცდომა ({file}): {e}")
 
+# --- მთავარი კლასი ---
 class CommunityCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    # --- ტექსტის დახატვის დამხმარე ფუნქცია Shadow ეფექტით ---
+    def draw_text_with_shadow(self, draw, xy, text, font, fill_color, shadow_color=(0, 0, 0, 150), shadow_offset=(2, 2)):
+        x, y = xy
+        sx, sy = shadow_offset
+        draw.text((x + sx, y + sy), text, font=font, fill=shadow_color, anchor="lm") # ვიყენებთ lm (left-middle) anchor-ს
+        draw.text(xy, text, font=font, fill=fill_color, anchor="lm") # ვიყენებთ lm anchor-ს
+
+    # --- Welcome სურათის გენერირების ფუნქცია (ახალი დიზაინი) ---
     async def create_welcome_image(self, member: discord.Member) -> Optional[discord.File]:
         try:
             guild = member.guild
-            W, H = (1000, 300) # უფრო ჰორიზონტალური სურათი
-            BG_COLOR = (20, 20, 30, 255) # მუქი ლურჯი-იასამნისფერი ფონი
+            W, H = (1000, 300) # სურათის ზომა
+            BG_COLOR = (20, 20, 30, 255) # ფონი
 
             img = Image.new("RGBA", (W, H), BG_COLOR)
             draw = ImageDraw.Draw(img)
 
             # სერვერის იკონკა (მრგვალი, მარცხნივ ზემოთ)
-            ICON_SIZE = 80
-            icon_pos = (40, 30)
+            ICON_SIZE = 80; icon_pos = (40, 30)
             if guild.icon:
                 try:
                     icon_response = requests.get(guild.icon.url, timeout=5); icon_response.raise_for_status()
@@ -47,17 +56,17 @@ class CommunityCog(commands.Cog):
                     img.paste(server_icon, icon_pos, mask)
                 except Exception as e: print(f"სერვერის იკონკის ჩატვირთვის შეცდომა: {e}")
 
-            # სერვერის სახელი (იკონკის მარჯვნივ)
+            # სერვერის სახელი
             try: font_server = ImageFont.truetype("NotoSansGeorgian-Bold.ttf", 40)
             except IOError: print("!!! სერვერის სახელის ფონტი ვერ მოიძებნა !!!"); return None
             server_name_x = icon_pos[0] + ICON_SIZE + 20
             server_name_y = icon_pos[1] + ICON_SIZE // 2
-            draw.text((server_name_x, server_name_y), guild.name, fill=(200, 200, 220), font=font_server, anchor="lm") # left-middle
+            # ვიყენებთ ჩრდილს აქაც
+            self.draw_text_with_shadow(draw, (server_name_x, server_name_y), guild.name, font_server, fill_color=(200, 200, 220))
 
             # მომხმარებლის ავატარი (მრგვალი, ცენტრში ქვემოთ)
-            AVATAR_SIZE = 150
-            avatar_pos = (W // 2 - AVATAR_SIZE // 2, 110) # Y კოორდინატი ქვემოთ
-            avatar_url = member.display_avatar.url # ვიყენებთ display_avatar-ს
+            AVATAR_SIZE = 150; avatar_pos = (W // 2 - AVATAR_SIZE // 2, 110) # Y კოორდინატი ქვემოთ
+            avatar_url = member.display_avatar.url
             try:
                 response = requests.get(avatar_url, timeout=10); response.raise_for_status()
                 avatar_image = Image.open(io.BytesIO(response.content)).convert("RGBA")
@@ -75,19 +84,25 @@ class CommunityCog(commands.Cog):
 
             text_y = avatar_pos[1] + AVATAR_SIZE + 25 # Y კოორდინატი ავატარის ქვემოთ
 
-            # მომხმარებლის სახელი
-            user_name = member.display_name # ვიყენებთ display_name-ს (შეიძლება იყოს ნიკნეიმი)
-            draw.text((W / 2, text_y), user_name, fill=(255, 255, 255), font=font_name, anchor="ms") # middle-top
+            # მომხმარებლის სახელი - ვხატავთ ჩრდილით
+            user_name = member.display_name
+            # ვიყენებთ anchor="ms" (middle-top) ცენტრირებისთვის
+            bbox_user = font_name.getbbox(user_name)
+            text_width_user = bbox_user[2] - bbox_user[0]
+            self.draw_text_with_shadow(draw, (W // 2 - text_width_user // 2, text_y), user_name, font_name, fill_color=(255, 255, 255))
 
-            # მისალმების ტექსტი
+            # მისალმების ტექსტი - ვხატავთ ჩრდილით
             welcome_text = f"კეთილი იყოს შენი მობრძანება!"
             text_y += 60 # დაშორება
-            draw.text((W / 2, text_y), welcome_text, fill=(180, 180, 200), font=font_welcome, anchor="ms")
+            bbox_welcome = font_welcome.getbbox(welcome_text)
+            text_width_welcome = bbox_welcome[2] - bbox_welcome[0]
+            self.draw_text_with_shadow(draw, (W // 2 - text_width_welcome // 2, text_y), welcome_text, font_welcome, fill_color=(180, 180, 200))
 
             final_buffer = io.BytesIO(); img.save(final_buffer, "PNG"); final_buffer.seek(0)
             return discord.File(fp=final_buffer, filename="welcome.png")
         except Exception as e: print(f"Welcome სურათის შექმნის შეცდომა: {e}"); import traceback; traceback.print_exc(); return None
 
+    # --- Setup ბრძანებები ---
     @app_commands.command(name="welcome", description="აყენებს მისალმების არხს")
     @app_commands.describe(channel="აირჩიე არხი")
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -104,6 +119,7 @@ class CommunityCog(commands.Cog):
         data = load_data(AUTOROLE_DB); data[str(interaction.guild.id)] = {"role_id": role.id}; save_data(data, AUTOROLE_DB)
         await interaction.response.send_message(f"ავტო როლი დაყენდა: **{role.name}**", ephemeral=True)
 
+    # --- ივენთები ---
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         guild_id = str(member.guild.id)
@@ -119,7 +135,8 @@ class CommunityCog(commands.Cog):
             if channel:
                 welcome_file = await self.create_welcome_image(member)
                 if welcome_file: await channel.send(f"შემოგვიერთდა {member.mention}!", file=welcome_file)
-                else: await channel.send(f"შემოგვიერთდა {member.mention}!")
+                else: await channel.send(f"შემოგვიერთდა {member.mention}!") # ტექსტი თუ სურათი ვერ შეიქმნა
 
+# Cog setup
 async def setup(bot: commands.Bot):
     await bot.add_cog(CommunityCog(bot))
