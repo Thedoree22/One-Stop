@@ -35,7 +35,7 @@ class CommunityCog(commands.Cog):
         x, y = xy
         sx, sy = shadow_offset
         # ვხატავთ ჩრდილს
-        draw.text((x + sx, y + sy), text, font=font, fill=shadow_color, anchor="lt") # ვიყენებთ lt (left-top) anchor-ს
+        draw.text((x + sx, y + sy), text, font=font, fill=shadow_color, anchor="lt")
         # ვხატავთ მთავარ ტექსტს
         draw.text(xy, text, font=font, fill=fill_color, anchor="lt")
 
@@ -43,22 +43,21 @@ class CommunityCog(commands.Cog):
     async def create_welcome_image(self, member: discord.Member) -> Optional[discord.File]:
         try:
             guild = member.guild
-            W, H = (1000, 400) # დავაბრუნოთ ძველი ზომა
+            W, H = (1000, 400) # სურათის ზომა
 
             # ფონი: მუქი წითელ-შავი გრადიენტი + ვარსკვლავები
             img = Image.new("RGBA", (W, H))
             draw = ImageDraw.Draw(img)
-            start_color = (80, 0, 10) # მუქი წითელი
-            end_color = (0, 0, 0)     # შავი
+            start_color = (80, 0, 10); end_color = (0, 0, 0)
             for i in range(H):
                 ratio=i/H; r=int(start_color[0]*(1-ratio)+end_color[0]*ratio); g=int(start_color[1]*(1-ratio)+end_color[1]*ratio); b=int(start_color[2]*(1-ratio)+end_color[2]*ratio)
                 draw.line([(0,i),(W,i)], fill=(r,g,b))
-            star_color = (255, 255, 255, 150) # თეთრი ვარსკვლავები
+            star_color = (255, 255, 255, 150)
             for _ in range(100):
                 x=random.randint(0,W); y=random.randint(0,H); size=random.randint(1,3)
                 draw.ellipse([(x,y),(x+size,y+size)], fill=star_color)
 
-            # ავატარი (ისევ მარცხნივ, ცენტრში)
+            # ავატარი
             AVATAR_SIZE = 180; avatar_pos = (80, (H // 2) - (AVATAR_SIZE // 2))
             avatar_url = member.display_avatar.url
             try:
@@ -70,10 +69,9 @@ class CommunityCog(commands.Cog):
             except Exception as e:
                 print(f"ავატარის ჩატვირთვის შეცდომა: {e}"); draw.ellipse([avatar_pos, (avatar_pos[0]+AVATAR_SIZE, avatar_pos[1]+AVATAR_SIZE)], outline="grey", width=3)
 
-            # ტექსტის დამატება (3 ხაზად, მარჯვნივ)
+            # ტექსტის დამატება
             draw = ImageDraw.Draw(img)
             try:
-                # დავაბრუნოთ წინა ფონტის ზომები
                 font_regular = ImageFont.truetype("NotoSansGeorgian-Regular.ttf", 50)
                 font_bold = ImageFont.truetype("NotoSansGeorgian-Bold.ttf", 65) # სახელი
                 font_server = ImageFont.truetype("NotoSansGeorgian-Regular.ttf", 40)
@@ -87,10 +85,20 @@ class CommunityCog(commands.Cog):
             if len(user_name) > 18: user_name = user_name[:15] + "..."
             server_text = f"{guild.name} - ში!"
 
-            # ტექსტის სიმაღლეების გამოთვლა
-            bbox_welcome = font_regular.getbbox(welcome_text); h_welcome = bbox_welcome[3] - bbox_welcome[1]
-            bbox_user = font_bold.getbbox(user_name); h_user = bbox_user[3] - bbox_user[1]
-            bbox_server = font_server.getbbox(server_text); h_server = bbox_server[3] - bbox_server[1]
+            # ტექსტის სიმაღლეების გამოთვლა (გამოვიყენოთ მხოლოდ getbbox თუ არსებობს)
+            h_welcome, h_user, h_server = 0, 0, 0
+            if hasattr(font_regular, 'getbbox'):
+                bbox_welcome = font_regular.getbbox(welcome_text); h_welcome = bbox_welcome[3] - bbox_welcome[1]
+            else: h_welcome = font_regular.getsize(welcome_text)[1] # ძველი მეთოდი
+
+            if hasattr(font_bold, 'getbbox'):
+                bbox_user = font_bold.getbbox(user_name); h_user = bbox_user[3] - bbox_user[1]
+            else: h_user = font_bold.getsize(user_name)[1]
+
+            if hasattr(font_server, 'getbbox'):
+                bbox_server = font_server.getbbox(server_text); h_server = bbox_server[3] - bbox_server[1]
+            else: h_server = font_server.getsize(server_text)[1]
+
             line_spacing = 15
             total_text_height = h_welcome + h_user + h_server + (line_spacing * 2)
             current_y = (H // 2) - (total_text_height // 2) # დავიწყოთ ცენტრიდან
@@ -124,28 +132,40 @@ class CommunityCog(commands.Cog):
         data = load_data(AUTOROLE_DB); data[str(interaction.guild.id)] = {"role_id": role.id}; save_data(data, AUTOROLE_DB)
         await interaction.response.send_message(f"ავტო როლი დაყენდა: **{role.name}**", ephemeral=True)
 
-    # --- ივენთები ---
+    # --- ივენთები (გასწორებული სინტაქსი 130-142 ხაზებზე) ---
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         guild_id = str(member.guild.id)
         # როლი
         autorole_data = load_data(AUTOROLE_DB)
         if guild_id in autorole_data:
-            role_id = autorole_data[guild_id].get("role_id"); role = member.guild.get_role(role_id)
-            if role: try: await member.add_roles(role) except Exception as e: print(f"როლის მიჭების შეცდომა: {e}")
+            role_id = autorole_data[guild_id].get("role_id")
+            role = member.guild.get_role(role_id)
+            if role:
+                try: # try იწყება აქ
+                    await member.add_roles(role)
+                except Exception as e: # except იწყება აქ
+                    print(f"როლის მიჭების შეცდომა: {e}")
+
         # მისალმება
         welcome_data = load_data(WELCOME_DB)
         if guild_id in welcome_data:
-            channel_id = welcome_data[guild_id].get("channel_id"); channel = member.guild.get_channel(channel_id)
+            channel_id = welcome_data[guild_id].get("channel_id")
+            channel = member.guild.get_channel(channel_id)
             if channel:
-                welcome_file = await self.create_welcome_image(member)
-                if welcome_file:
-                    try: await channel.send(f"შემოგვიერთდა {member.mention}!", file=welcome_file)
-                    except discord.Forbidden: print(f"არ მაქვს უფლება გავაგზავნო Welcome #{channel.name}-ში")
-                    except Exception as e: print(f"Welcome გაგზავნის შეცდომა: {e}")
-                else: # თუ სურათი ვერ შეიქმნა
-                    try: await channel.send(f"შემოგვიერთდა {member.mention}!")
-                    except Exception as e: print(f"Welcome ტექსტის გაგზავნის შეცდომა: {e}")
+                welcome_file = await self.create_welcome_image(member) # 130
+                if welcome_file: # 131
+                    try: # 132
+                        await channel.send(f"შემოგვიერთდა {member.mention}!", file=welcome_file) # 133
+                    except discord.Forbidden: # 134, სწორი indentation
+                        print(f"არ მაქვს უფლება გავაგზავნო Welcome შეტყობინება #{channel.name}-ში") # 135
+                    except Exception as e: # 136
+                        print(f"Welcome შეტყობინების გაგზავნის შეცდომა: {e}") # 137
+                else: # თუ სურათი ვერ შეიქმნა (138)
+                    try: # 139
+                        await channel.send(f"შემოგვიერთდა {member.mention}!") # 140
+                    except Exception as e: # 141
+                         print(f"Welcome ტექსტური შეტყობინების გაგზავნის შეცდომა: {e}") # 142
 
 # Cog setup
 async def setup(bot: commands.Bot):
